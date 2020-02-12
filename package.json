@@ -1,0 +1,17 @@
+{
+  "name": "light_client_exploration",
+  "version": "1.0.0",
+  "description": "",
+  "main": " ",
+  "type": "module",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {},
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "web3": "^1.2.1"
+  },
+  "devDependencies": {}
+}
