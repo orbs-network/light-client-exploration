@@ -114,35 +114,18 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
     }
 }
 
-async function getEvents(web3, contract, startBlock, endBlock, eventName) {
-    try {
-        return await getAllPastEvents(web3, contract, startBlock, endBlock, eventName, false);
-    } catch (err) {
-        console.log(`Error extracting events: ${err}`);
-        return [];
-    }
-}
-
 const name = "eth-light-client";
 const url = "http://kartoha.orbs-test.com:8545";
 
 async function processBatch(web3, contract, startBlock, endBlock, eventName) {
     let start = moment();
-        let events = [];
-        try {
-            events = await getEvents(web3, contract, startBlock, endBlock, eventName);    
-            console.log(`>>> Completed collection of events from ${name}`);
-        } catch (err) {
-            console.log(`Error in ${name}, skipping..`, err);
-            events = [];
-        }
-
-        return {
-            startBlock, 
-            endBlock,
-            duration: moment.duration(moment().diff(start)).as('seconds'),
-            count: events.length,
-        }
+    const events = await getAllPastEvents(web3, contract, startBlock, endBlock, eventName, false);
+    return {
+        startBlock, 
+        endBlock,
+        duration: moment.duration(moment().diff(start)).as('seconds'),
+        count: events.length,
+    }
 }
 
 function loadData() {
@@ -172,11 +155,12 @@ async function main() {
     console.log('Created web3 instance for all clients');
 
     while(true) {
+        let startBlock, endBlock;
         try {
             let persistence = loadData();
 
-            let endBlock = await web3.eth.getBlockNumber();
-            let startBlock = 7437000;
+            endBlock = await web3.eth.getBlockNumber();
+            startBlock = 7437000;
             // let startBlock = endBlock - 6500*3;
             if (persistence.length > 0) {
                 startBlock = persistence[persistence.length - 1].endBlock + 1;
@@ -200,7 +184,7 @@ async function main() {
                 saveData(persistence);
             }
         } catch (e) {
-            console.log(`ERROR: ${e}`);
+            console.log(`ERROR [${startBlock}:${endBlock}]: ${e}`);
         }
 
         await wait(60000); // 1m
