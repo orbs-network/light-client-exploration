@@ -47,71 +47,52 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
 
 
     let rows = [];
-    try {
-        let events = await contract.getPastEvents(eventName, options);
-        for (let i = events.length - 1; i >= 0; i--) {
-            let event = events[i];
-            if (requireSuccess) {
-                let curTxnReceipt = await web3.eth.getTransactionReceipt(event.transactionHash);
-                if (curTxnReceipt == null) {
-                    throw "Could not find a transaction for your id! ID you provided was " + event.transactionHash;
-                } else {
-                    if (curTxnReceipt.status == '0x0') {
-                        console.log("Transaction failed, event ignored txid: " + event.transactionHash);
-                        continue;
-                    }
+    let events = await contract.getPastEvents(eventName, options);
+    for (let i = events.length - 1; i >= 0; i--) {
+        let event = events[i];
+        if (requireSuccess) {
+            let curTxnReceipt = await web3.eth.getTransactionReceipt(event.transactionHash);
+            if (curTxnReceipt == null) {
+                throw "Could not find a transaction for your id! ID you provided was " + event.transactionHash;
+            } else {
+                if (curTxnReceipt.status == '0x0') {
+                    console.log("Transaction failed, event ignored txid: " + event.transactionHash);
+                    continue;
                 }
             }
-
-            let sourceAddress = getFromAddressAddressFromEvent(event);
-            let receipientAddress = getToAddressAddressFromEvent(event);
-
-            let unix_date, human_date;
-
-            let amount = 0;
-            let logData = [];
-            // console.log(`BlockNum=${event.blockNumber} Source=${sourceAddress} recipient=${receipientAddress}`);
-            // console.log(`EventRaw=${JSON.stringify(event)}`);
-            if (event.raw.data != null) { // no data for guardians event
-                if (event.event === "VoteOut") {
-                    logData = web3.eth.abi.decodeLog([{
-                        type: 'address',
-                        name: 'sender',
-                        indexed: true
-                    }, {
-                        type: 'address[]',
-                        name: 'validators'
-                    }, {
-                        type: 'uint256',
-                        name: 'counter'
-                    }], event.raw.data, event.raw.topics[1]);
-
-                } else {
-                    amount = web3.utils.toBN(event.raw.data);
-                }
-            }
-            let obj = generateRowObject(amount, event.blockNumber, event.transactionIndex, event.transactionHash, sourceAddress, receipientAddress, event.event, unix_date, human_date, logData);
-            rows.push(obj);
         }
-        return rows;
-    } catch (error) { // split event extraction to 2 parts
-        if (error.message.includes("-32005")) {
-            let interval = endBlock - startBlock;
-            // try log execution
-            let halfInterval = Math.floor(interval / 2);
-            let startPlusHalf = startBlock + halfInterval;
-            let firstHalf = await getAllPastEvents(web3, contract, startBlock, startPlusHalf - 1, eventName, requireSuccess);
-            if (startPlusHalf + halfInterval < endBlock) {
-                // handle odd integer division from a couple of lines back
-                halfInterval++;
+
+        let sourceAddress = getFromAddressAddressFromEvent(event);
+        let receipientAddress = getToAddressAddressFromEvent(event);
+
+        let unix_date, human_date;
+
+        let amount = 0;
+        let logData = [];
+        // console.log(`BlockNum=${event.blockNumber} Source=${sourceAddress} recipient=${receipientAddress}`);
+        // console.log(`EventRaw=${JSON.stringify(event)}`);
+        if (event.raw.data != null) { // no data for guardians event
+            if (event.event === "VoteOut") {
+                logData = web3.eth.abi.decodeLog([{
+                    type: 'address',
+                    name: 'sender',
+                    indexed: true
+                }, {
+                    type: 'address[]',
+                    name: 'validators'
+                }, {
+                    type: 'uint256',
+                    name: 'counter'
+                }], event.raw.data, event.raw.topics[1]);
+
+            } else {
+                amount = web3.utils.toBN(event.raw.data);
             }
-            let secondHalf = await getAllPastEvents(web3, contract, startPlusHalf, startPlusHalf + halfInterval, eventName, requireSuccess);
-            return firstHalf.concat(secondHalf);
-        } else {
-            console.log(error);
-            return [];
         }
+        let obj = generateRowObject(amount, event.blockNumber, event.transactionIndex, event.transactionHash, sourceAddress, receipientAddress, event.event, unix_date, human_date, logData);
+        rows.push(obj);
     }
+    return rows;
 }
 
 const name = "eth-light-client";
