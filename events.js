@@ -144,7 +144,7 @@ async function main() {
             startBlock = 7437000;
             // let startBlock = endBlock - 6500*3;
             if (persistence.length > 0) {
-                startBlock = persistence[persistence.length - 1].endBlock + 1;
+                startBlock = persistence[persistence.length - 1].endBlock;
             }
     
             const startBlockTimestamp = moment.unix((await web3.eth.getBlock(startBlock)).timestamp);
@@ -155,7 +155,6 @@ async function main() {
             const contract = await new web3.eth.Contract(contractAbi, contractAddress);
     
             const batchSize = 1000;
-    
             for (let i = startBlock; i <= endBlock; i+=batchSize) {
                 const maxEnd = i + batchSize > endBlock ? endBlock : i + batchSize;
                 const status = await processBatch(web3, contract, i, maxEnd, "Transfer");
@@ -168,7 +167,9 @@ async function main() {
             console.log(`ERROR [${startBlock}:${endBlock}]: ${e}`);
         }
 
-        await wait(60000); // 1m
+        const timeout = 10000;
+        await wait(timeout); // 1m
+        console.log(`Waiting for ${timeout}ms...`)
     }
 }
 
