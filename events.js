@@ -4,6 +4,7 @@ const {
     contractAbi,
     contractAddress
 } = require('./sample_contract');
+const { readFileSync, writeFileSync } = require("fs");
 
 function getFromAddressAddressFromEvent(event) {
     const TOPIC_FROM_ADDR = 1;
@@ -69,7 +70,7 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
 
             let amount = 0;
             let logData = [];
-            console.log(`[${web3.clientName || 'NA'}] BlockNum=${event.blockNumber} Source=${sourceAddress} recipient=${receipientAddress}`);
+            // console.log(`BlockNum=${event.blockNumber} Source=${sourceAddress} recipient=${receipientAddress}`);
             // console.log(`EventRaw=${JSON.stringify(event)}`);
             if (event.raw.data != null) { // no data for guardians event
                 if (event.event === "VoteOut") {
@@ -125,6 +126,44 @@ async function getEvents(web3, contract, startBlock, endBlock, eventName) {
 const name = "eth-light-client";
 const url = "http://kartoha.orbs-test.com:8545";
 
+async function processBatch(web3, contract, startBlock, endBlock, eventName) {
+    let start = moment();
+        let events = [];
+        try {
+            events = await getEvents(web3, contract, startBlock, endBlock, eventName);    
+            console.log(`>>> Completed collection of events from ${name}`);
+        } catch (err) {
+            console.log(`Error in ${name}, skipping..`, err);
+            events = [];
+        }
+
+        return {
+            startBlock, 
+            endBlock,
+            duration: moment.duration(moment().diff(start)).as('seconds'),
+            count: events.length,
+        }
+}
+
+function loadData() {
+    try {
+        return JSON.parse(readFileSync("./status.json"));
+    } catch (e) {
+        console.log(`WARN: ${e}`);
+        return [];
+    }
+}
+
+function saveData(persistence) {
+    writeFileSync("./status.json", JSON.stringify(persistence, 2, 2));
+}
+
+async function wait(intervalInMs) {
+    return new Promise((resolve, reject) => {
+        setTimeout(resolve, intervalInMs);
+    })
+}
+
 async function main() {
     // let startBlock = "9929090";
     // let startBlock = "9402000"; //transactions start at 7437000; //contract created at 5710114
@@ -132,31 +171,40 @@ async function main() {
     const web3 = await new Web3(new Web3.providers.HttpProvider(url));
     console.log('Created web3 instance for all clients');
 
-    let endBlock = await web3.eth.getBlockNumber(); //"9402050"; // last elections as of now.. first election at 7528900    
-    let startBlock = endBlock - 6500*3;
+    while(true) {
+        try {
+            let persistence = loadData();
 
-    const startBlockTimestamp = moment.unix((await web3.eth.getBlock(startBlock)).timestamp);
-    const endBlockTimestamp = moment.unix((await web3.eth.getBlock(endBlock)).timestamp);
+            let endBlock = await web3.eth.getBlockNumber();
+            let startBlock = 7437000;
+            // let startBlock = endBlock - 6500*3;
+            if (persistence.length > 0) {
+                startBlock = persistence[persistence.length - 1].endBlock + 1;
+            }
     
-    console.log(`Time passed between blocks: ${moment.duration(endBlockTimestamp.diff(startBlockTimestamp)).as('days')} days`);
+            const startBlockTimestamp = moment.unix((await web3.eth.getBlock(startBlock)).timestamp);
+            const endBlockTimestamp = moment.unix((await web3.eth.getBlock(endBlock)).timestamp);
+            
+            console.log(`Time passed between blocks: ${moment.duration(endBlockTimestamp.diff(startBlockTimestamp)).as('days')} days`);
+    
+            const contract = await new web3.eth.Contract(contractAbi, contractAddress);
+    
+            const batchSize = 1000;
+    
+            for (let i = startBlock; i <= endBlock; i+=batchSize) {
+                const maxEnd = i + batchSize > endBlock ? endBlock : i + batchSize;
+                const status = await processBatch(web3, contract, i, maxEnd, "Transfer");
+                console.log(status);
+    
+                persistence.push(status);
+                saveData(persistence);
+            }
+        } catch (e) {
+            console.log(`ERROR: ${e}`);
+        }
 
-    const contract = await new web3.eth.Contract(contractAbi, contractAddress);
-    console.log('Created contract instance using Infura');
-
-    let start = moment();
-    let events = [];
-    try {
-        console.log(`>>> Getting block number from ${url}`);
-        console.log(`>>> Current block number (${name}): ${await web3.eth.getBlockNumber()}, getting events now..`);
-        events = await getEvents(web3, contract, startBlock, endBlock, "Transfer");
-
-        console.log(`>>> Completed collection of events from ${name}`);
-    } catch (err) {
-        console.log(`Error in ${name}, skipping..`, err);
-        events = [];
+        await wait(60000); // 1m
     }
-    console.log('\x1b[33m%s\x1b[0m', `Found total of ${events.length} events of Contract Address ${contractAddress} between blocks ${startBlock} , ${endBlock}`);
-    console.log('\x1b[33m%s\x1b[0m', `Took ${moment.duration(moment().diff(start)).as('seconds')}s to process ${endBlock - startBlock} blocks from ${startBlock} to ${endBlock}`);
 }
 
 main()
