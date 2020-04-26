@@ -132,7 +132,7 @@ async function main() {
     // let startBlock = "9929090";
     // let startBlock = "9402000"; //transactions start at 7437000; //contract created at 5710114
 
-    const web3 = await new Web3(new Web3.providers.HttpProvider(url));
+    const web3 = await new Web3(new Web3.providers.HttpProvider(url, 60000)); // set timeout to 1m
     console.log('Created web3 instance for all clients');
 
     while(true) {
