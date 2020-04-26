@@ -5,21 +5,6 @@ const {
     contractAddress
 } = require('./sample_contract');
 
-// First one MUST be Infura - this is our source of truth for this test
-const clients = [
-    // {name: "Infura", url: "https://mainnet.infura.io/v3/6e3487b19a364da6965ca35a72fb6d68"}, //infura endpoint
-    {
-        name: "geth-7545",
-        url: "http://kartoha.orbs-test.com:8545"
-    }, //geth endpoint
-    // {name: "geth-aws-nano-7545", url: "http://3.126.117.88:7545"}, //geth endpoint
-    // {name: "parity-aws-nano-8545", url: "https://3.126.117.88:8546"}, //parity endpoint
-    // {name: "parity-8545", url: "http://127.0.0.1:8545"}, //parity endpoint
-    // {name: "parity-8550", url: "http://127.0.0.1:8550"}, //parity endpoint
-];
-
-let interval = 20000;
-
 function getFromAddressAddressFromEvent(event) {
     const TOPIC_FROM_ADDR = 1;
     let topic = event.raw.topics[TOPIC_FROM_ADDR];
@@ -60,7 +45,6 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
     };
 
 
-    let blockCache = {};
     let rows = [];
     try {
         let events = await contract.getPastEvents(eventName, options);
@@ -81,17 +65,6 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
             let sourceAddress = getFromAddressAddressFromEvent(event);
             let receipientAddress = getToAddressAddressFromEvent(event);
 
-            // Get timestamp (with block cache)
-            // let transactionBlock = blockCache[event.blockNumber];
-            // if (transactionBlock == undefined) {
-            //     transactionBlock = await web3.eth.getBlock(event.blockNumber);
-            //     blockCache[event.blockNumber] = transactionBlock;
-            // }
-
-            // let unix_date = transactionBlock.timestamp;
-            // let jsDate = new Date(unix_date * 1000);
-            // let human_date = jsDate.toUTCString();
-            // human_date = human_date.slice(0, 3) + human_date.slice(4);
             let unix_date, human_date;
 
             let amount = 0;
@@ -140,84 +113,50 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
     }
 }
 
-async function readAndMergeEvents(web3, contract, startBlock, endBlock, eventName, requireSuccess) {
-    let events = [];
-    console.log('\x1b[33m%s\x1b[0m', `[${web3.clientName}] Reading from block ${startBlock} to block ${endBlock}`);
-
-    let curBlockInt = parseFloat(startBlock);
-    let endBlockInt = parseFloat(endBlock);
-
-    while (curBlockInt < endBlockInt) {
-        let targetBlock = curBlockInt + interval - 1;
-        if (targetBlock > endBlockInt) {
-            targetBlock = endBlockInt
-        }
-
-        let eventsInterval = await getAllPastEvents(web3, contract, curBlockInt, targetBlock, eventName, requireSuccess);
-        console.log('\x1b[33m%s\x1b[0m', `Found ${eventsInterval.length} ${eventName} events of Contract Address ${contract.address} between blocks ${curBlockInt} , ${targetBlock}`);
-        curBlockInt += interval;
-        events = events.concat(eventsInterval);
-    }
-    console.log('\x1b[33m%s\x1b[0m', `[${web3.clientName}] Found total of ${events.length} ${eventName} events of Contract Address ${contract.address} between blocks ${startBlock} , ${endBlock}`);
-    return events;
-}
-
 async function getEvents(web3, contract, startBlock, endBlock, eventName) {
     try {
-        const eventsData = await readAndMergeEvents(web3, contract, startBlock, endBlock, eventName, false);
-        return eventsData;
+        return await getAllPastEvents(web3, contract, startBlock, endBlock, eventName, false);
     } catch (err) {
         console.log(`Error extracting events: ${err}`);
         return [];
     }
-
 }
+
+const name = "eth-light-client";
+const url = "http://kartoha.orbs-test.com:8545";
 
 async function main() {
     // let startBlock = "9929090";
     // let startBlock = "9402000"; //transactions start at 7437000; //contract created at 5710114
-    
-    for (let i = 0; i < clients.length; i++) {
-        clients[i].web3 = await new Web3(new Web3.providers.HttpProvider(clients[i].url));
-        clients[i].web3.clientName = clients[i].name;
-    }
+
+    const web3 = await new Web3(new Web3.providers.HttpProvider(url));
     console.log('Created web3 instance for all clients');
 
-    let endBlock = await clients[0].web3.eth.getBlockNumber(); //"9402050"; // last elections as of now.. first election at 7528900    
+    let endBlock = await web3.eth.getBlockNumber(); //"9402050"; // last elections as of now.. first election at 7528900    
     let startBlock = endBlock - 6500*3;
 
-    const startBlockTimestamp = moment.unix((await clients[0].web3.eth.getBlock(startBlock)).timestamp);
-    const endBlockTimestamp = moment.unix((await clients[0].web3.eth.getBlock(endBlock)).timestamp);
+    const startBlockTimestamp = moment.unix((await web3.eth.getBlock(startBlock)).timestamp);
+    const endBlockTimestamp = moment.unix((await web3.eth.getBlock(endBlock)).timestamp);
     
     console.log(`Time passed between blocks: ${moment.duration(endBlockTimestamp.diff(startBlockTimestamp)).as('days')} days`);
 
-    const contract = await new clients[0].web3.eth.Contract(contractAbi, contractAddress);
+    const contract = await new web3.eth.Contract(contractAbi, contractAddress);
     console.log('Created contract instance using Infura');
 
     let start = moment();
-    for (let i = 0; i < clients.length; i++) {
-        try {
-            console.log(`>>> Getting block number from ${clients[i].url}`);
-            console.log(`>>> Current block number (${clients[i].name}): ${await clients[i].web3.eth.getBlockNumber()}, getting events now..`);
-            clients[i].events = await getEvents(clients[i].web3, contract, startBlock, endBlock, "Transfer");
-            // clients[i].eventsStr = JSON.stringify(clients[i].events);
-            console.log(`>>> Completed collection of events from ${clients[i].name}`);
-        } catch (err) {
-            console.log(`Error in ${clients[i].name}, skipping..`, err);
-            clients[i].events = null;
-            clients[i].eventsStr = null;
-        }
-    }
-    console.log('\x1b[33m%s\x1b[0m', `Took ${moment.duration(moment().diff(start)).as('seconds')}s to process ${endBlock - startBlock} blocks from ${startBlock} to ${endBlock}`);
-    // for (let i = 1; i < clients.length; i++) {
-    //     console.log(`Compare ${clients[0].name} to ${clients[i].name}: `, clients[0].eventsStr === clients[i].eventsStr);
-    // }
-}
+    let events = [];
+    try {
+        console.log(`>>> Getting block number from ${url}`);
+        console.log(`>>> Current block number (${name}): ${await web3.eth.getBlockNumber()}, getting events now..`);
+        events = await getEvents(web3, contract, startBlock, endBlock, "Transfer");
 
-async function getBlockNumberFromInfura() {
-    const web3 = await new Web3(new Web3.providers.HttpProvider(infuraEthereumConnectionURL));
-    blockNumber = await web3.eth.getBlockNumber();
-    return blockNumber;
+        console.log(`>>> Completed collection of events from ${name}`);
+    } catch (err) {
+        console.log(`Error in ${name}, skipping..`, err);
+        events = [];
+    }
+    console.log('\x1b[33m%s\x1b[0m', `Found total of ${events.length} events of Contract Address ${contractAddress} between blocks ${startBlock} , ${endBlock}`);
+    console.log('\x1b[33m%s\x1b[0m', `Took ${moment.duration(moment().diff(start)).as('seconds')}s to process ${endBlock - startBlock} blocks from ${startBlock} to ${endBlock}`);
 }
 
 main()
