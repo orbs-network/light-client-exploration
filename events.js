@@ -21,21 +21,6 @@ function getToAddressAddressFromEvent(event) {
     return "NA";
 }
 
-function generateRowObject(amount, block, transactionIndex, txHash, transferFrom, transferTo, method, unix_date, human_date, logData) {
-    return {
-        amount,
-        block,
-        transactionIndex,
-        txHash,
-        transferFrom,
-        transferTo,
-        method,
-        unix_date,
-        human_date,
-        logData
-    }
-}
-
 async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName, requireSuccess) {
     if (!contract) {
         throw "Missing contract";
@@ -65,37 +50,20 @@ async function getAllPastEvents(web3, contract, startBlock, endBlock, eventName,
         let sourceAddress = getFromAddressAddressFromEvent(event);
         let receipientAddress = getToAddressAddressFromEvent(event);
 
-        let unix_date, human_date;
-
-        let amount = 0;
-        let logData = [];
         // console.log(`BlockNum=${event.blockNumber} Source=${sourceAddress} recipient=${receipientAddress}`);
         // console.log(`EventRaw=${JSON.stringify(event)}`);
-        if (event.raw.data != null) { // no data for guardians event
-            if (event.event === "VoteOut") {
-                logData = web3.eth.abi.decodeLog([{
-                    type: 'address',
-                    name: 'sender',
-                    indexed: true
-                }, {
-                    type: 'address[]',
-                    name: 'validators'
-                }, {
-                    type: 'uint256',
-                    name: 'counter'
-                }], event.raw.data, event.raw.topics[1]);
 
-            } else {
-                amount = web3.utils.toBN(event.raw.data);
-            }
-        }
-        let obj = generateRowObject(amount, event.blockNumber, event.transactionIndex, event.transactionHash, sourceAddress, receipientAddress, event.event, unix_date, human_date, logData);
-        rows.push(obj);
+        rows.push({
+            blockNumber: event.blockNumber,
+            transactionIndex: event.transactionIndex,
+            transactionHash: event.transactionHash,
+            sourceAddress,
+            receipientAddress,
+        });
     }
     return rows;
 }
 
-const name = "eth-light-client";
 const url = "http://kartoha.orbs-test.com:8545";
 
 async function processBatch(web3, contract, startBlock, endBlock, eventName) {
@@ -105,8 +73,17 @@ async function processBatch(web3, contract, startBlock, endBlock, eventName) {
         startBlock, 
         endBlock,
         duration: moment.duration(moment().diff(start)).as('seconds'),
-        count: events.length,
+        eventsCount: events.length,
+        blocksCount: uniqueBlocks(events),
     }
+}
+
+function uniqueBlocks(events) {
+    const blocks = {}
+    for (let i = 0; i < events.length; i++) {
+        blocks[events[i].blockNumber] = i;
+    }
+    return Object.keys(blocks).length;
 }
 
 function loadData() {
@@ -132,7 +109,7 @@ async function main() {
     // let startBlock = "9929090";
     // let startBlock = "9402000"; //transactions start at 7437000; //contract created at 5710114
 
-    const web3 = await new Web3(new Web3.providers.HttpProvider(url, 60000)); // set timeout to 1m
+    const web3 = await new Web3(new Web3.providers.HttpProvider(url, {timeout: 60000*10})); // set timeout to 1m
     console.log('Created web3 instance for all clients');
 
     while(true) {
