@@ -1,3 +1,4 @@
+const Promise = require('bluebird');
 const Web3 = require('web3');
 const moment = require('moment');
 const {
@@ -134,7 +135,7 @@ async function main() {
             const batchSize = 1000;
             for (let i = startBlock; i <= endBlock; i+=batchSize) {
                 const maxEnd = i + batchSize > endBlock ? endBlock : i + batchSize;
-                const status = await processBatch(web3, contract, i, maxEnd, "Transfer");
+                const status = (await Promise.all([processBatch(web3, contract, i, maxEnd, "Transfer")]).timeout(10*60000))[0]; // timeout 10m
                 console.log(status);
     
                 persistence.push(status);
