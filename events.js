@@ -76,6 +76,7 @@ async function processBatch(web3, contract, startBlock, endBlock, eventName) {
         duration: moment.duration(moment().diff(start)).as('seconds'),
         eventsCount: events.length,
         blocksCount: uniqueBlocks(events),
+        timestamp: new Date(),
     }
 }
 
